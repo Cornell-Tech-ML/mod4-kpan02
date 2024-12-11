@@ -6,6 +6,7 @@ from typing import Any, Iterable, Optional, Sequence, Tuple, Type, Union
 import numpy as np
 
 from dataclasses import field
+
 from .autodiff import Context, Variable, backpropagate, central_difference
 from .scalar_functions import (
     EQ,
@@ -112,21 +113,78 @@ class Scalar:
         return self.history is not None and self.history.last_fn is None
 
     def is_constant(self) -> bool:
+        """Returns True if this variable is a constant (i.e., has no history).
+
+        A constant variable is one that is not part of the computation graph
+        and does not require gradient computation.
+
+        Returns
+        -------
+            bool: True if the variable is constant, False otherwise.
+
+        """
         return self.history is None
 
     @property
     def parents(self) -> Iterable[Variable]:
-        """Get the variables used to create this one."""
+        """Returns an iterable of the parent variables of this variable.
+
+        This property is used to traverse the computation graph during backpropagation.
+        It returns the input variables that were used to compute this variable.
+
+        Returns:
+        -------
+            Iterable[Variable]: An iterable of the parent variables.
+
+        Raises:
+        ------
+            AssertionError: If the variable has no history (i.e., is a constant or leaf node).
+
+        Note:
+        ----
+            This property assumes that the variable has a history. It should only be
+            called on non-leaf, non-constant variables.
+
+        """
         assert self.history is not None
         return self.history.inputs
 
     def chain_rule(self, d_output: Any) -> Iterable[Tuple[Variable, Any]]:
+        """Implements the chain rule for backpropagation.
+
+        This method computes the gradients with respect to the input variables
+        using the chain rule of calculus. It combines the gradient of the output
+        with respect to this variable (d_output) with the local gradients computed
+        by the backward function of the last operation.
+
+        Args:
+        ----
+            d_output (Any): The gradient of the final output with respect to this variable.
+
+        Returns:
+        -------
+            Iterable[Tuple[Variable, Any]]: An iterable of tuples, where each tuple contains:
+                - A parent Variable
+                - The gradient of the output with respect to that parent Variable
+
+        Note:
+        ----
+            This method should only be called on non-leaf, non-constant variables.
+            It assumes that the variable has a history with a last function and context.
+
+        """
         h = self.history
         assert h is not None
         assert h.last_fn is not None
         assert h.ctx is not None
 
-        raise NotImplementedError("Need to include this file from past assignment.")
+        result = []
+        i = h.last_fn._backward(h.ctx, d_output)
+        parents = self.parents
+        for j, parent in zip(i, parents):
+            if not parent.is_constant():
+                result.append((parent, j))
+        return result
 
     def backward(self, d_output: Optional[float] = None) -> None:
         """Calls autodiff to fill in the derivatives for the history of this object.
@@ -141,17 +199,174 @@ class Scalar:
             d_output = 1.0
         backpropagate(self, d_output)
 
-    raise NotImplementedError("Need to include this file from past assignment.")
+    def __lt__(self, b: ScalarLike) -> Scalar:
+        """Less than comparison function.
+
+        Args:
+        ----
+            b (ScalarLike): The value to compare against.
+
+        Returns:
+        -------
+            Scalar: A new Scalar with value 1.0 if self < b, else 0.0.
+
+        This method applies the LT (Less Than) function to compare
+        the current Scalar with the given value b. It returns a new
+        Scalar representing the result of the comparison.
+
+        """
+        return LT.apply(self, b)
+
+    def __gt__(self, b: ScalarLike) -> Scalar:
+        """Greater than comparison function.
+
+        Args:
+        ----
+            b (ScalarLike): The value to compare against.
+
+        Returns:
+        -------
+            Scalar: A new Scalar with value 1.0 if self > b, else 0.0.
+
+        This method applies the LT (Less Than) function to b and self
+        to implement the greater than comparison. It returns a new
+        Scalar representing the result of the comparison.
+
+        """
+        return LT.apply(b, self)
+
+    def __add__(self, b: ScalarLike) -> Scalar:
+        """Addition operation.
+
+        Args:
+        ----
+            b (ScalarLike): The value to add to this Scalar.
+
+        Returns:
+        -------
+            Scalar: A new Scalar representing the sum of this Scalar and b.
+
+        This method applies the Add function to combine the current Scalar
+        with the given value b. It returns a new Scalar representing the
+        result of the addition.
+
+        """
+        return Add.apply(self, b)
+
+    def __sub__(self, b: ScalarLike) -> Scalar:
+        """Subtraction operation.
+
+        Args:
+        ----
+            b (ScalarLike): The value to subtract from this Scalar.
+
+        Returns:
+        -------
+            Scalar: A new Scalar representing the difference between this Scalar and b.
+
+        This method implements subtraction by adding the negation of b to self.
+        It uses the Add and Neg functions to perform the operation.
+
+        """
+        return Add.apply(self, Neg.apply(b))
+
+    def __neg__(self) -> Scalar:
+        """Negation operation.
+
+        Returns
+        -------
+            Scalar: A new Scalar representing the negation of this Scalar.
+
+        This method applies the Neg function to the current Scalar,
+        returning a new Scalar that represents its negation.
+
+        """
+        return Neg.apply(self)
+
+    def __eq__(self, b: ScalarLike) -> Scalar:
+        """Equality comparison operation.
+
+        Args:
+        ----
+            b (ScalarLike): The value to compare with this Scalar.
+
+        Returns:
+        -------
+            Scalar: A new Scalar representing the result of the equality comparison.
+
+        This method applies the EQ (Equality) function to compare the current Scalar
+        with the given value b. It returns a new Scalar that is 1.0 if the values are equal,
+        and 0.0 otherwise.
+
+        """
+        return EQ.apply(self, b)
+
+    def relu(self) -> Scalar:
+        """Rectified Linear Unit (ReLU) operation.
+
+        Returns
+        -------
+            Scalar: A new Scalar representing the result of applying ReLU to this Scalar.
+
+        This method applies the ReLU function to the current Scalar,
+        returning a new Scalar that represents max(0, x) where x is the value of this Scalar.
+
+        """
+        return ReLU.apply(self)
+
+    def log(self) -> Scalar:
+        """Natural logarithm operation.
+
+        Returns
+        -------
+            Scalar: A new Scalar representing the natural logarithm of this Scalar.
+
+        This method applies the natural logarithm function to the current Scalar,
+        returning a new Scalar that represents the natural logarithm of the value of this Scalar.
+
+        """
+        return Log.apply(self)
+
+    def exp(self) -> Scalar:
+        """Exponential operation.
+
+        Returns
+        -------
+            Scalar: A new Scalar representing the exponential of this Scalar.
+
+        This method applies the Exp function to the current Scalar,
+        returning a new Scalar that represents the exponential of the value of this Scalar.
+
+        """
+        return Exp.apply(self)
+
+    def sigmoid(self) -> Scalar:
+        """Sigmoid operation.
+
+        Returns
+        -------
+            Scalar: A new Scalar representing the result of applying the sigmoid function to this Scalar.
+
+        This method applies the sigmoid function to the current Scalar,
+        returning a new Scalar that represents 1 / (1 + exp(-x)) where x is the value of this Scalar.
+
+        """
+        return Sigmoid.apply(self)
 
 
 def derivative_check(f: Any, *scalars: Scalar) -> None:
-    """Checks that autodiff works on a python function.
-    Asserts False if derivative is incorrect.
+    """Checks the derivative of a given function at specific scalar arguments.
 
-    Parameters
-    ----------
-        f : function from n-scalars to 1-scalar.
-        *scalars  : n input scalar values.
+    This function verifies that the derivative of a given function `f` at specific scalar arguments `scalars` matches the expected derivative value computed using central difference. It asserts that the derivative computed using autodiff matches the expected derivative within a certain tolerance.
+
+    Args:
+    ----
+        f (function): The function to check the derivative for.
+        scalars (Scalar): The scalar arguments to evaluate the function and its derivative at.
+
+    Raises:
+    ------
+        AssertionError: If the computed derivative does not match the expected derivative within the specified tolerance.
 
     """
     out = f(*scalars)

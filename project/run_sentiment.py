@@ -1,3 +1,6 @@
+import os.path
+# Set HOME environment variable for Windows
+os.environ['HOME'] = os.path.expanduser('~')
 import random
 
 import embeddings
@@ -35,7 +38,7 @@ class Conv1d(minitorch.Module):
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        return minitorch.conv1d(input, self.weights.value) + self.bias.value
 
 
 class CNNSentimentKim(minitorch.Module):
@@ -62,14 +65,32 @@ class CNNSentimentKim(minitorch.Module):
         super().__init__()
         self.feature_map_size = feature_map_size
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.conv1 = Conv1d(embedding_size, feature_map_size, filter_sizes[0])
+        self.conv2 = Conv1d(embedding_size, feature_map_size, filter_sizes[1])
+        self.conv3 = Conv1d(embedding_size, feature_map_size, filter_sizes[2])
+        self.final = Linear(feature_map_size, 1)
+        self.dropout = dropout
 
     def forward(self, embeddings):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        embeddings = embeddings.permute(0, 2, 1)
+
+        features = []
+        features.append(minitorch.max(self.conv1(embeddings).relu(), 2))
+        features.append(minitorch.max(self.conv2(embeddings).relu(), 2))
+        features.append(minitorch.max(self.conv3(embeddings).relu(), 2))
+
+        combined = features[0] + features[1] + features[2]
+
+        batch = combined.shape[0]
+        combined = combined.view(batch, self.feature_map_size)
+
+        if self.training:
+            combined = minitorch.dropout(combined, self.dropout)
+        return self.final(combined).sigmoid().view(batch)
 
 
 # Evaluation helper methods

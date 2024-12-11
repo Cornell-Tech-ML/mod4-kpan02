@@ -15,6 +15,7 @@ class SGD(Optimizer):
         self.lr = lr
 
     def zero_grad(self) -> None:
+        """Zero out the gradients of all parameters."""
         for p in self.parameters:
             if p.value is None:
                 continue
@@ -26,6 +27,7 @@ class SGD(Optimizer):
                     p.value.grad = None
 
     def step(self) -> None:
+        """Update parameters based on gradients."""
         for p in self.parameters:
             if p.value is None:
                 continue
